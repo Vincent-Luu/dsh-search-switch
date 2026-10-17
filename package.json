@@ -1,7 +1,7 @@
 {
   "name": "dsh-search-switch",
-  "version": "0.1.0",
-  "description": "Switch web_search between DSH native DeepSeek search and Tavily from the session composer bar, with a Tavily search-depth switch (basic/advanced).",
+  "version": "0.2.0",
+  "description": "Route DSH web_search and web_fetch from the session composer bar: native DeepSeek / Tavily / Jina / Firecrawl search, and Jina Reader / local HTTP / Firecrawl URL-to-markdown fetch.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -21,7 +21,11 @@
     "deepseek-harness",
     "dsh",
     "web-search",
-    "tavily"
+    "web-fetch",
+    "tavily",
+    "jina",
+    "firecrawl",
+    "markdown"
   ],
   "license": "MIT",
   "repository": {
@@ -58,7 +62,7 @@
     "@deepseek-ai/schemastery": "^3.18.4"
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/dispatch.js && node --check lib/tavily-provider.js && node --check lib/tavily-mapping.js && node --check lib/client.js",
-    "test": "node --test --test-isolation=none test/tavily-mapping.test.mjs test/tavily-provider.test.mjs test/dispatch.test.mjs test/client-bundle.test.mjs"
+    "check": "node --check lib/index.js && node --check lib/dispatch.js && node --check lib/credentials.js && node --check lib/transport.js && node --check lib/tavily-provider.js && node --check lib/tavily-mapping.js && node --check lib/jina-provider.js && node --check lib/jina-mapping.js && node --check lib/firecrawl-provider.js && node --check lib/firecrawl-mapping.js && node --check lib/client.js",
+    "test": "node --test --test-isolation=none test/tavily-mapping.test.mjs test/tavily-provider.test.mjs test/jina-mapping.test.mjs test/jina-provider.test.mjs test/firecrawl-mapping.test.mjs test/firecrawl-provider.test.mjs test/dispatch.test.mjs test/client-bundle.test.mjs"
   }
 }

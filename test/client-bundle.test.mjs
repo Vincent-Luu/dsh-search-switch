@@ -41,13 +41,18 @@ function makeContext(options = {}) {
   const injections = []
   const effects = []
   const snapshot = {
-    status: 'ready',
-    writable: true,
+    status: options.status ?? 'ready',
+    writable: options.writable ?? true,
     revision: 1,
     value: {
       active: options.active ?? 'deepseek',
+      fetchSource: options.fetchSource ?? 'jina',
+      fetchFallbackToLocal: options.fallback ?? true,
       tavilySearchDepth: options.depth ?? 'basic',
+      jinaReaderKeyMode: options.jinaMode ?? 'anonymous',
       tavilyApiKeyEnv: 'TAVILY_API_KEY',
+      jinaApiKeyEnv: 'JINA_API_KEY',
+      firecrawlApiKeyEnv: 'FIRECRAWL_API_KEY',
     },
   }
   const form = {
@@ -56,7 +61,14 @@ function makeContext(options = {}) {
     set: async () => true,
   }
   const credentials = {
-    describe: async () => ({ ok: true, value: { TAVILY_API_KEY: { configured: true, writable: true } } }),
+    describe: async () => ({
+      ok: true,
+      value: {
+        TAVILY_API_KEY: { configured: options.tavilyKey !== false, writable: true },
+        JINA_API_KEY: { configured: options.jinaKey !== false, writable: true },
+        FIRECRAWL_API_KEY: { configured: options.firecrawlKey !== false, writable: true },
+      },
+    }),
     set: async () => ({ ok: true }),
   }
   const slots = {
@@ -129,7 +141,7 @@ test('registers the composer control and the bundle config card', async () => {
   assert.ok(injections.includes('plugins.bundle.config'))
 
   const injected = composer.registration.inject()
-  assert.equal(typeof injected.t('label.source'), 'string')
+  assert.equal(typeof injected.t('label.search'), 'string')
   assert.equal(injected.form.getSnapshot().value.active, 'deepseek')
   assert.equal(injected.credentials, context.remote.credentials)
 })
@@ -155,31 +167,120 @@ test('every registration is retractable', async () => {
 
 test('pure readers keep the UI honest', async () => {
   const { module } = await loadBundle()
-  const { readSource, readDepth, isWritable, showsDepth, apiKeyRef, DEPTH_OPTIONS, EXTRA_DEPTH_OPTIONS } = module.__internals
+  const internals = module.__internals
 
-  assert.equal(readSource({ value: { active: 'tavily' } }), 'tavily')
-  assert.equal(readSource({ value: { active: 'bing' } }), 'deepseek')
-  assert.equal(readSource(null), 'deepseek')
+  assert.equal(internals.readSearchSource({ value: { active: 'jina' } }), 'jina')
+  assert.equal(internals.readSearchSource({ value: { active: 'firecrawl' } }), 'firecrawl')
+  assert.equal(internals.readSearchSource({ value: { active: 'bing' } }), 'deepseek')
+  assert.equal(internals.readSearchSource(null), 'deepseek')
 
-  assert.equal(readDepth({ value: { tavilySearchDepth: 'advanced' } }), 'advanced')
-  // Latency tiers live behind the "more" popover but must still round-trip.
-  assert.equal(readDepth({ value: { tavilySearchDepth: 'fast' } }), 'fast')
-  assert.equal(readDepth({ value: { tavilySearchDepth: 'ultra-fast' } }), 'ultra-fast')
-  assert.equal(readDepth({ value: { tavilySearchDepth: 'turbo' } }), 'basic')
-  assert.equal(readDepth(undefined), 'basic')
-  assert.deepEqual(DEPTH_OPTIONS, ['basic', 'advanced'])
-  assert.deepEqual(EXTRA_DEPTH_OPTIONS, ['fast', 'ultra-fast'])
+  assert.equal(internals.readFetchSource({ value: { fetchSource: 'local' } }), 'local')
+  assert.equal(internals.readFetchSource({ value: { fetchSource: 'firecrawl' } }), 'firecrawl')
+  assert.equal(internals.readFetchSource({ value: { fetchSource: 'curl' } }), 'jina')
+  assert.equal(internals.readFetchSource({ value: {} }), 'jina')
 
-  assert.equal(isWritable({ status: 'ready', writable: true }), true)
-  assert.equal(isWritable({ status: 'loading', writable: true }), false)
-  assert.equal(isWritable({ status: 'ready', writable: false }), false)
+  assert.equal(internals.readDepth({ value: { tavilySearchDepth: 'advanced' } }), 'advanced')
+  // Latency tiers live in the same popover but must still round-trip.
+  assert.equal(internals.readDepth({ value: { tavilySearchDepth: 'fast' } }), 'fast')
+  assert.equal(internals.readDepth({ value: { tavilySearchDepth: 'ultra-fast' } }), 'ultra-fast')
+  assert.equal(internals.readDepth({ value: { tavilySearchDepth: 'turbo' } }), 'basic')
+  assert.equal(internals.readDepth(undefined), 'basic')
+  assert.deepEqual(internals.DEPTH_OPTIONS, ['basic', 'advanced'])
+  assert.deepEqual(internals.EXTRA_DEPTH_OPTIONS, ['fast', 'ultra-fast'])
+  assert.deepEqual(internals.SEARCH_OPTIONS, ['deepseek', 'tavily', 'jina', 'firecrawl'])
+  assert.deepEqual(internals.FETCH_OPTIONS, ['jina', 'local', 'firecrawl'])
 
-  assert.equal(showsDepth({ value: { active: 'tavily' } }), true)
-  assert.equal(showsDepth({ value: { active: 'deepseek' } }), false)
-  assert.equal(showsDepth({ value: {} }), false)
+  assert.equal(internals.readJinaReaderKeyMode({ value: { jinaReaderKeyMode: 'api' } }), 'api')
+  assert.equal(internals.readJinaReaderKeyMode({ value: { jinaReaderKeyMode: 'nope' } }), 'anonymous')
+  assert.equal(internals.readJinaReaderKeyMode({ value: {} }), 'anonymous')
 
-  assert.equal(apiKeyRef({ value: { tavilyApiKeyEnv: 'MY_TAVILY_KEY' } }), 'MY_TAVILY_KEY')
-  assert.equal(apiKeyRef({ value: {} }), 'TAVILY_API_KEY')
+  assert.equal(internals.readFallback({ value: { fetchFallbackToLocal: false } }), false)
+  assert.equal(internals.readFallback({ value: {} }), true)
+
+  assert.equal(internals.isWritable({ status: 'ready', writable: true }), true)
+  assert.equal(internals.isWritable({ status: 'loading', writable: true }), false)
+  assert.equal(internals.isWritable({ status: 'ready', writable: false }), false)
+
+  assert.deepEqual(internals.keyRefs({ value: {} }), {
+    tavily: 'TAVILY_API_KEY',
+    jina: 'JINA_API_KEY',
+    firecrawl: 'FIRECRAWL_API_KEY',
+  })
+  assert.equal(internals.keyRefs({ value: { jinaApiKeyEnv: 'MY_JINA' } }).jina, 'MY_JINA')
+})
+
+test('warning dots follow the keys that actually block a provider', async () => {
+  const { module } = await loadBundle()
+  const { missingKeyProvider } = module.__internals
+  const base = {
+    searchSource: 'deepseek',
+    fetchSource: 'jina',
+    jinaMode: 'anonymous',
+    keyStates: { tavily: 'unset', jina: 'unset', firecrawl: 'unset' },
+  }
+  assert.equal(missingKeyProvider(base), null)
+  assert.equal(missingKeyProvider({ ...base, searchSource: 'tavily' }), 'tavily')
+  assert.equal(missingKeyProvider({ ...base, searchSource: 'jina' }), 'jina')
+  // Jina Reader stays free: only `api` mode needs the key.
+  assert.equal(missingKeyProvider({ ...base, fetchSource: 'jina', jinaMode: 'api' }), 'jinaApi')
+  assert.equal(missingKeyProvider({ ...base, fetchSource: 'jina', jinaMode: 'auto' }), null)
+  // Firecrawl works anonymously, so it never raises the dot.
+  assert.equal(missingKeyProvider({ ...base, searchSource: 'firecrawl', fetchSource: 'firecrawl' }), null)
+  assert.equal(missingKeyProvider({ ...base, keyStates: { tavily: 'set', jina: 'set', firecrawl: 'set' } }), null)
+})
+
+test('the search popover model carries providers and Tavily depth only', async () => {
+  const { module } = await loadBundle()
+  const { searchMenuModel } = module.__internals
+  const state = {
+    searchSource: 'tavily',
+    fetchSource: 'jina',
+    depth: 'advanced',
+    jinaMode: 'anonymous',
+    fallback: true,
+    keyStates: { tavily: 'unset', jina: 'unset', firecrawl: 'set' },
+  }
+  const model = searchMenuModel(state)
+  assert.deepEqual(model.providers.map((row) => row.id), ['deepseek', 'tavily', 'jina', 'firecrawl'])
+  assert.deepEqual(model.providers.map((row) => row.selected), [false, true, false, false])
+  assert.deepEqual(model.providers.map((row) => row.keyMissing), [false, true, true, false])
+  assert.deepEqual(model.depths.map((row) => row.id), ['basic', 'advanced', 'fast', 'ultra-fast'])
+  assert.deepEqual(model.depths.map((row) => row.selected), [false, true, false, false])
+
+  for (const source of ['deepseek', 'jina', 'firecrawl']) {
+    assert.deepEqual(searchMenuModel({ ...state, searchSource: source }).depths, [])
+  }
+})
+
+test('the fetch popover model carries providers, Jina mode, and the fallback', async () => {
+  const { module } = await loadBundle()
+  const { fetchMenuModel } = module.__internals
+  const jina = fetchMenuModel({
+    searchSource: 'deepseek',
+    fetchSource: 'jina',
+    depth: 'basic',
+    jinaMode: 'auto',
+    fallback: false,
+    keyStates: { tavily: 'set', jina: 'unset', firecrawl: 'unset' },
+  })
+  assert.deepEqual(jina.providers.map((row) => row.id), ['jina', 'local', 'firecrawl'])
+  assert.deepEqual(jina.providers.map((row) => row.selected), [true, false, false])
+  assert.deepEqual(jina.jinaModes.map((row) => row.id), ['anonymous', 'auto', 'api'])
+  assert.deepEqual(jina.jinaModes.map((row) => row.selected), [false, true, false])
+  assert.equal(jina.fallback, false)
+  assert.equal(jina.fallbackApplies, true)
+
+  const local = fetchMenuModel({
+    searchSource: 'deepseek',
+    fetchSource: 'local',
+    depth: 'basic',
+    jinaMode: 'anonymous',
+    fallback: true,
+    keyStates: { tavily: 'set', jina: 'set', firecrawl: 'unset' },
+  })
+  assert.deepEqual(local.jinaModes, [])
+  assert.equal(local.fallbackApplies, false)
+  assert.equal(local.providers.find((row) => row.id === 'firecrawl').keyMissing, true)
 })
 
 /** Visit every element of the fake element tree the bundle builds. */
@@ -204,55 +305,37 @@ async function renderComposer(options) {
   return entry.component(entry.registration.inject())
 }
 
-test('hides the depth group while the native source is active', async () => {
-  const tree = await renderComposer({ active: 'deepseek' })
-  const groups = []
+test('the composer shows one pill per capability, naming the current provider', async () => {
+  const tree = await renderComposer({ active: 'tavily', fetchSource: 'firecrawl' })
+  const triggers = []
   const values = []
-  let more = null
-  walkElements(tree, (element) => {
-    if (element.props && element.props['data-group']) groups.push(element.props['data-group'])
-    if (element.type === 'button' && element.props && element.props['data-value']) {
-      values.push(element.props['data-value'])
-    }
-    if (element.props && element.props['data-more-depth']) more = element
-  })
-  assert.deepEqual(groups, ['source'])
-  assert.deepEqual(values, ['deepseek', 'tavily'])
-  assert.equal(more, null, 'the more trigger belongs to the hidden depth group')
-})
-
-test('shows the depth group only for Tavily, with both segments and the more trigger', async () => {
-  const tree = await renderComposer({ active: 'tavily' })
-  const groups = []
-  const values = []
-  let more = null
   let menu = null
   walkElements(tree, (element) => {
-    if (element.props && element.props['data-group']) groups.push(element.props['data-group'])
-    if (element.type === 'button' && element.props && element.props['data-value']) {
+    if (element.props && element.props['data-trigger']) {
+      triggers.push(element.props['data-trigger'])
       values.push(element.props['data-value'])
     }
-    if (element.props && element.props['data-more-depth']) more = element
     if (element.props && element.props.role === 'menu') menu = element
   })
-  assert.deepEqual(groups, ['source', 'depth'])
-  assert.deepEqual(values, ['deepseek', 'tavily', 'basic', 'advanced'])
-  assert.ok(more, 'more trigger missing')
-  assert.equal(more.props['data-active-depth'], 'basic')
-  assert.equal(more.props['aria-expanded'], 'false')
-  assert.equal(menu, null, 'the popover must stay closed until clicked')
+  assert.deepEqual(triggers, ['search', 'fetch'])
+  assert.deepEqual(values, ['tavily', 'firecrawl'])
+  assert.equal(menu, null, 'popovers must stay closed until clicked')
 })
 
-test('surfaces a latency tier on the more trigger', async () => {
-  const tree = await renderComposer({ active: 'tavily', depth: 'ultra-fast' })
-  let more = null
-  walkElements(tree, (element) => {
-    if (element.props && element.props['data-more-depth']) more = element
+test('the pills reflect the defaults and disable themselves when read-only', async () => {
+  const defaults = await renderComposer({})
+  const values = []
+  walkElements(defaults, (element) => {
+    if (element.props && element.props['data-trigger']) values.push(element.props['data-value'])
   })
-  assert.ok(more, 'more trigger missing')
-  assert.equal(more.props['data-active-depth'], 'ultra-fast')
-  assert.match(more.props.className, /dssw-seg--on/u)
-  assert.ok(more.children.join('').includes('depth.ultra-fast'))
+  assert.deepEqual(values, ['deepseek', 'jina'])
+
+  const readonly = await renderComposer({ writable: false })
+  const disabled = []
+  walkElements(readonly, (element) => {
+    if (element.props && element.props['data-trigger']) disabled.push(element.props.disabled)
+  })
+  assert.deepEqual(disabled, [true, true])
 })
 
 test('flips the popover above when the composer sits at the bottom', async () => {
@@ -273,10 +356,17 @@ test('flips the popover above when the composer sits at the bottom', async () =>
 
   // Clamped inside the right edge.
   const right = menuPlacementFor({ top: 100, bottom: 130, right: 1199 }, viewport, 84)
-  assert.equal(right.left, viewport.width - 232 - 8)
+  assert.equal(right.left, viewport.width - 320 - 8)
+  assert.equal(right.width, 320)
 
   // Neither side fits: clamped to the top margin so the rows stay reachable
   // through the menu's own scrolling.
   const short = menuPlacementFor({ top: 10, bottom: 40, right: 900 }, { width: 1200, height: 60 }, 84)
   assert.equal(short.top, 8)
+
+  // The size object carries both dimensions for the two wide popovers.
+  const sized = menuPlacementFor({ top: 600, bottom: 630, right: 900 }, viewport, { width: 320, height: 360 })
+  assert.equal(sized.above, true)
+  assert.equal(sized.width, 320)
+  assert.equal(sized.left, 900 - 320)
 })
