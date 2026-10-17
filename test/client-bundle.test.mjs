@@ -188,8 +188,8 @@ test('pure readers keep the UI honest', async () => {
   assert.equal(internals.readDepth(undefined), 'basic')
   assert.deepEqual(internals.DEPTH_OPTIONS, ['basic', 'advanced'])
   assert.deepEqual(internals.EXTRA_DEPTH_OPTIONS, ['fast', 'ultra-fast'])
-  assert.deepEqual(internals.SEARCH_OPTIONS, ['deepseek', 'tavily', 'jina', 'firecrawl'])
-  assert.deepEqual(internals.FETCH_OPTIONS, ['jina', 'local', 'firecrawl'])
+  assert.deepEqual(internals.SEARCH_OPTIONS, ['deepseek', 'deepseek-api', 'tavily', 'jina', 'firecrawl'])
+  assert.deepEqual(internals.FETCH_OPTIONS, ['jina', 'local', 'deepseek-api', 'firecrawl'])
 
   assert.equal(internals.readJinaReaderKeyMode({ value: { jinaReaderKeyMode: 'api' } }), 'api')
   assert.equal(internals.readJinaReaderKeyMode({ value: { jinaReaderKeyMode: 'nope' } }), 'anonymous')
@@ -247,9 +247,9 @@ test('the search popover model carries providers and Tavily depth only', async (
     keyStates: { tavily: 'unset', jina: 'unset', firecrawl: 'set' },
   }
   const model = searchMenuModel(state)
-  assert.deepEqual(model.providers.map((row) => row.id), ['deepseek', 'tavily', 'jina', 'firecrawl'])
-  assert.deepEqual(model.providers.map((row) => row.selected), [false, true, false, false])
-  assert.deepEqual(model.providers.map((row) => row.keyMissing), [false, true, true, false])
+  assert.deepEqual(model.providers.map((row) => row.id), ['deepseek', 'deepseek-api', 'tavily', 'jina', 'firecrawl'])
+  assert.deepEqual(model.providers.map((row) => row.selected), [false, false, true, false, false])
+  assert.deepEqual(model.providers.map((row) => row.keyMissing), [false, false, true, true, false])
   assert.deepEqual(model.depths.map((row) => row.id), ['basic', 'advanced', 'fast', 'ultra-fast'])
   assert.deepEqual(model.depths.map((row) => row.selected), [false, true, false, false])
 
@@ -270,8 +270,8 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
     fallback: false,
     keyStates: { tavily: 'set', jina: 'unset', firecrawl: 'unset' },
   })
-  assert.deepEqual(jina.providers.map((row) => row.id), ['jina', 'local', 'firecrawl'])
-  assert.deepEqual(jina.providers.map((row) => row.selected), [true, false, false])
+  assert.deepEqual(jina.providers.map((row) => row.id), ['jina', 'local', 'deepseek-api', 'firecrawl'])
+  assert.deepEqual(jina.providers.map((row) => row.selected), [true, false, false, false])
   assert.deepEqual(jina.jinaModes.map((row) => row.id), ['anonymous', 'auto', 'api'])
   assert.deepEqual(jina.jinaModes.map((row) => row.selected), [false, true, false])
   assert.deepEqual(jina.respondWith.map((row) => row.id), ['default', 'markdown'])

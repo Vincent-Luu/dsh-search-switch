@@ -1,7 +1,7 @@
 {
   "name": "dsh-search-switch",
-  "version": "0.2.3",
-  "description": "Route DSH web_search and web_fetch from the session composer bar: native DeepSeek / Tavily / Jina / Firecrawl search, and Jina Reader / local HTTP / Firecrawl URL-to-markdown fetch.",
+  "version": "0.3.0",
+  "description": "Route DSH web_search and web_fetch from the session composer bar: native DeepSeek, official DeepSeek Search/Fetch APIs, Tavily, Jina and Firecrawl, with Jina Reader / local HTTP / Firecrawl URL-to-markdown fetch.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
