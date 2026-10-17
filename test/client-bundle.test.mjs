@@ -25,6 +25,7 @@ async function loadBundle() {
     useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
     useEffect: () => {},
     useCallback: (callback) => callback,
+    useRef: (initial) => ({ current: initial }),
     useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   }
   const module = entry.factory((id) => {
@@ -154,16 +155,20 @@ test('every registration is retractable', async () => {
 
 test('pure readers keep the UI honest', async () => {
   const { module } = await loadBundle()
-  const { readSource, readDepth, isWritable, showsDepth, apiKeyRef } = module.__internals
+  const { readSource, readDepth, isWritable, showsDepth, apiKeyRef, DEPTH_OPTIONS, EXTRA_DEPTH_OPTIONS } = module.__internals
 
   assert.equal(readSource({ value: { active: 'tavily' } }), 'tavily')
   assert.equal(readSource({ value: { active: 'bing' } }), 'deepseek')
   assert.equal(readSource(null), 'deepseek')
 
   assert.equal(readDepth({ value: { tavilySearchDepth: 'advanced' } }), 'advanced')
-  // Config-only depths display as Basic without rewriting the stored value.
-  assert.equal(readDepth({ value: { tavilySearchDepth: 'fast' } }), 'basic')
+  // Latency tiers live behind the "more" popover but must still round-trip.
+  assert.equal(readDepth({ value: { tavilySearchDepth: 'fast' } }), 'fast')
+  assert.equal(readDepth({ value: { tavilySearchDepth: 'ultra-fast' } }), 'ultra-fast')
+  assert.equal(readDepth({ value: { tavilySearchDepth: 'turbo' } }), 'basic')
   assert.equal(readDepth(undefined), 'basic')
+  assert.deepEqual(DEPTH_OPTIONS, ['basic', 'advanced'])
+  assert.deepEqual(EXTRA_DEPTH_OPTIONS, ['fast', 'ultra-fast'])
 
   assert.equal(isWritable({ status: 'ready', writable: true }), true)
   assert.equal(isWritable({ status: 'loading', writable: true }), false)
@@ -203,26 +208,49 @@ test('hides the depth group while the native source is active', async () => {
   const tree = await renderComposer({ active: 'deepseek' })
   const groups = []
   const values = []
+  let more = null
   walkElements(tree, (element) => {
     if (element.props && element.props['data-group']) groups.push(element.props['data-group'])
     if (element.type === 'button' && element.props && element.props['data-value']) {
       values.push(element.props['data-value'])
     }
+    if (element.props && element.props['data-more-depth']) more = element
   })
   assert.deepEqual(groups, ['source'])
   assert.deepEqual(values, ['deepseek', 'tavily'])
+  assert.equal(more, null, 'the more trigger belongs to the hidden depth group')
 })
 
-test('shows the depth group only for Tavily, with both segments', async () => {
+test('shows the depth group only for Tavily, with both segments and the more trigger', async () => {
   const tree = await renderComposer({ active: 'tavily' })
   const groups = []
   const values = []
+  let more = null
+  let menu = null
   walkElements(tree, (element) => {
     if (element.props && element.props['data-group']) groups.push(element.props['data-group'])
     if (element.type === 'button' && element.props && element.props['data-value']) {
       values.push(element.props['data-value'])
     }
+    if (element.props && element.props['data-more-depth']) more = element
+    if (element.props && element.props.role === 'menu') menu = element
   })
   assert.deepEqual(groups, ['source', 'depth'])
   assert.deepEqual(values, ['deepseek', 'tavily', 'basic', 'advanced'])
+  assert.ok(more, 'more trigger missing')
+  assert.equal(more.props['data-active-depth'], 'basic')
+  assert.equal(more.props['aria-expanded'], 'false')
+  assert.equal(menu, null, 'the popover must stay closed until clicked')
+})
+
+test('surfaces a latency tier on the more trigger', async () => {
+  const tree = await renderComposer({ active: 'tavily', depth: 'ultra-fast' })
+  let more = null
+  walkElements(tree, (element) => {
+    if (element.props && element.props['data-more-depth']) more = element
+  })
+  assert.ok(more, 'more trigger missing')
+  assert.equal(more.props['data-active-depth'], 'ultra-fast')
+  assert.match(more.props.className, /dssw-seg--on/u)
+  assert.ok(more.children.join('').includes('depth.ultra-fast'))
 })

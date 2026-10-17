@@ -3,17 +3,18 @@
 在 DeepSeek Harness（dsh）的**会话输入框工具栏**切换 `web_search` 的后端：
 
 - **搜索来源**：`原生`（DSH 内置 DeepSeek 搜索，provider id `deepseek-official`）｜`Tavily`
-- **搜索强度**：`基础`（Tavily `basic`，1 积分/次）｜`高级`（Tavily `advanced`，2 积分/次）
+- **搜索强度**：`基础`（Tavily `basic`，1 积分/次）｜`高级`（Tavily `advanced`，2 积分/次）；`更多 ▾` 里还有 `快速`（`fast`）与 `极速`（`ultra-fast`），均 1 积分/次
 
 切换即时生效、无需刷新页面或重启；选择写入 profile 的 `cordis.patch.yml`，重启后保留。`web_search` 的 schema、`web_fetch` 行为、以及模型看到的结果结构都不变。
 
-> English TL;DR — A dsh bundle that flips `web_search` between the DSH native DeepSeek provider and Tavily, plus a Tavily search-depth switch (basic/advanced), from the session composer bar. The choice is global and persisted in the active profile's `cordis.patch.yml`.
+> English TL;DR — A dsh bundle that flips `web_search` between the DSH native DeepSeek provider and Tavily, with Tavily depth modes (Basic/Advanced segments plus Fast/Ultra fast behind a "More" popover), from the session composer bar. The choice is global and persisted in the active profile's `cordis.patch.yml`.
 
 ## 功能
 
 - 两组胶囊控件挂在 `conversation.input.left`（权限 / Plan 标签之后、模型选择之前），只在本插件被宿主服务时出现。
 - 来源与强度是插件的 `.volatile()` 配置：写入即生效，下一次 `web_search` 就使用新值。
-- 原生激活时强度组自动隐藏——原生后端没有对应参数；切回 Tavily 后沿用上次强度。
+- 强度默认暴露 `基础 | 高级` 两档；`更多 ▾` 弹层提供 `快速`（`fast`）与 `极速`（`ultra-fast`），选中后触发按钮会显示当前档位名。
+- 原生激活时强度组（含 `更多`）自动隐藏——原生后端没有对应参数；切回 Tavily 后沿用上次强度。
 - 「设置 → 插件 → dsh-search-switch」页可填写 Tavily API Key（写入凭据库 `TAVILY_API_KEY`，不写入设置文件），并显示当前来源 / 强度。
 - Tavily 未配置密钥时，Tavily 段旁显示 `!` 提示；搜索会失败并明确指路。
 - Tavily 由本插件自己实现（私有实例，不注册进 `ctx.web`），不会与社区 `tavily` provider 发生 id 冲突。
@@ -54,10 +55,11 @@ dsh plugin --profile desktop add dsh-search-switch
 
 ## 使用
 
-1. 打开任意会话，输入框工具栏出现 `原生 | Tavily` 与 `基础 | 高级`。
+1. 打开任意会话，输入框工具栏出现 `原生 | Tavily` 与 `基础 | 高级 | 更多 ▾`。
 2. 点 `Tavily`：立即切到 Tavily；点 `高级`：下一次搜索使用 `search_depth: "advanced"`（2 积分/次）。
-3. 首次使用 Tavily 需要密钥：**设置 → 插件 → dsh-search-switch** 填入，或让 dsh 进程环境里有 `TAVILY_API_KEY`。
-4. 点 `原生`：恢复 DSH 内置搜索，强度组自动隐藏。
+3. 点 `更多 ▾`：弹层里可选 `快速` / `极速`（`fast` / `ultra-fast`，均 1 积分/次）；`↑`/`↓` 移动、`Enter` 选中、`Esc` 关闭。`ultra-fast` 每个 URL 只返回一个摘要。
+4. 首次使用 Tavily 需要密钥：**设置 → 插件 → dsh-search-switch** 填入，或让 dsh 进程环境里有 `TAVILY_API_KEY`。
+5. 点 `原生`：恢复 DSH 内置搜索，强度组（含 `更多`）自动隐藏。
 
 ## 配置
 
@@ -69,7 +71,7 @@ dsh plugin --profile desktop add dsh-search-switch
 | `nativeProviderId` | `deepseek-official` | 原生来源在 web seam 中注册的 provider id |
 | `tavilyApiKeyEnv` | `TAVILY_API_KEY` | 凭据库引用名；设置页把密钥写到这里 |
 | `tavilyBaseURL` | `https://api.tavily.com` | 端点基址，`/search` 自动追加 |
-| `tavilySearchDepth` | `basic` | Tavily 官方 4 档：`basic` / `advanced` / `fast` / `ultra-fast`；界面只暴露前两档 |
+| `tavilySearchDepth` | `basic` | Tavily 官方 4 档：`basic` / `advanced`（段落）与 `fast` / `ultra-fast`（`更多 ▾` 弹层） |
 | `tavilyTopic` | `general` | `general` / `news` / `finance` |
 | `tavilyAnswer` | `off` | `off` / `basic` / `advanced` → 映射为 `include_answer`，非空答案进入结果的 `content` |
 | `tavilyChunksPerSource` | `3` | 1–3；`basic`/`advanced`/`fast` 下生效，控制每来源片段数 |
@@ -156,6 +158,7 @@ client 改动后刷新页面即可；host 改动、bundle 列表或 manifest 改
 
 - **全局语义**：`ctx.web.search()` 没有会话上下文参数，来源与强度对当前 profile 的所有会话生效。
 - **两处非公开依赖**：运行期 pin 依赖 `ctx.web.searchProviderId` 可写，原生委托依赖 `ctx.web.searchProviders`（Map）。二者在 dsh 0.2.0-rc.2 上可用；升级 dsh 后若失效，插件会告警而不是静默失效，替代方案是静态 pin `web.searchProvider`。
-- **强度只暴露两档**：`fast` / `ultra-fast` 已进 schema（可手改 patch），但界面只显示 `基础和高级`，未知档位显示为 Basic。
+- **强度分成两条轴**：`basic`/`advanced` 是质量档，`fast`/`ultra-fast` 是延迟档；`ultra-fast` 每个 URL 只返回一个 NLP 摘要（不发 `chunks_per_source`）。界面按「两档 + 更多」呈现，避免把 4 个语义不同的档位平铺成一条轴。
+- **弹层定位**：`更多` 弹层用 `position: fixed` 自行定位（客户端模块表没有 `react-dom`，无法用 portal）；若未来宿主给输入框加了 `transform`/`filter` 祖先，弹层可能被裁切。
 - **Tavily 契约**：字段与枚举按官方 [Tavily Search API 参考](https://docs.tavily.com/documentation/api-reference/endpoint/search)（OpenAPI 1.0.0，2026-08 查阅）实现；`include_published_date` 仍为官方 beta 字段。
 - **凭据**：密钥存于 dsh 凭据库；`dsh-search-switch` 不写任何自有存储，选择由宿主写入 profile patch。
