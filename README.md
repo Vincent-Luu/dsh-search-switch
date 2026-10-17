@@ -17,10 +17,10 @@
 - 两个大类的弹层各自列出提供商、说明和该提供商专属选项；`↑`/`↓` 移动、`Enter` 选中、`Esc` 关闭，弹层会随可用空间上翻/夹取，超高时内部滚动。
 - 两条轴都是插件的 `.volatile()` 配置：写入即生效，下一次 `web_search` / `web_fetch` 就使用新值。
 - **搜索弹层**：4 个提供商；选中 Tavily 时下方追加 4 档强度；Jina 行标注「搜索需要 API key」。
-- **抓取弹层**：3 个提供商；选中 Jina 时追加 `Jina key 模式`（匿名 / 自动 / API Key）；另有「抓取失败自动回落本地」开关。
+- **抓取弹层**：3 个提供商；选中 Jina 时追加 `Jina key 模式`（匿名 / 自动 / API Key）与 `Jina 内容模式`（精简 / 完整结构）；另有「抓取失败自动回落本地」开关。
 - **默认套路**：`web_fetch → r.jina.ai` 匿名模式，日常读取不花 key、不需要额度；碰到内网/被反爬/限流的页面自动回落 DSH 本地抓取。
 - 缺 key 时对应胶囊显示琥珀色圆点（Tavily 搜索 / Jina 搜索 / Jina Reader 的 `api` 模式）；Firecrawl 与匿名 Reader 不报警。
-- 「设置 → 插件 → dsh-search-switch」页可分别填写 Tavily / Jina / Firecrawl 的 API Key（写入凭据库，不写入设置文件），并显示当前搜索与抓取提供商。
+- 「设置 → 插件 → dsh-search-switch」页可分别填写 Tavily / Jina / Firecrawl 的 API Key（写入凭据库，不写入设置文件），可填 Jina 抓取选择器（CSS），并显示当前搜索与抓取提供商。
 - Jina 与 Firecrawl 都是本插件自己的私有实现（不注册进 `ctx.web`），不会与社区同名 provider 发生 `WEB_DUPLICATE_PROVIDER` 冲突。
 
 ## 安装
@@ -115,11 +115,11 @@ dsh plugin --profile desktop add dsh-search-switch
 | `jinaRetainLinks` | `all` | `all` / `none` / `text` |
 | `jinaLinksSummary` | `false` | 追加 `Buttons & Links` 汇总段 |
 | `jinaBypassCache` | `false` | `x-no-cache` |
-| `jinaRespondWith` | `default` | `default`（readability，省 token） / `markdown`（绕过 readability，保留完整标题结构） |
-| `jinaTargetSelector` | 空 | `x-target-selector`，如 `article`、`main`、`#mw-content-text`；配合 `markdown` 模式可裁掉导航 |
+| `jinaRespondWith` | `default` | `default`（readability，省 token） / `markdown`（绕过 readability，保留完整标题结构）；抓取弹层的「Jina 内容模式」即为该项 |
+| `jinaTargetSelector` | 空 | `x-target-selector`，如 `article`、`main`、`#mw-content-text`；在设置页输入，配合 `markdown` 模式可裁掉导航 |
 | `jinaSite` | 空 | 搜索站内过滤，逗号分隔多个 hostname |
 
-> **Wikipedia 这类长条目**：默认 readability 会把 `##` 小节标题剥掉（正文完整但结构变平）。要保留结构，把 `jinaRespondWith` 设为 `markdown` 并配一个 `jinaTargetSelector`（Wikipedia 用 `#mw-content-text`）；同时把 `fetchMaxChars` 提到 `200000`，否则 12 万字符级的条目会被截断。用 Firecrawl 抓取则天然带结构（`onlyMainContent`），不必调这两个开关。
+> **Wikipedia 这类长条目**：默认 readability 会把 `##` 小节标题剥掉（正文完整但结构变平）。要保留结构：抓取弹层把「Jina 内容模式」切到 `完整结构`，设置页填选择器（Wikipedia 用 `#mw-content-text`），并把 `fetchMaxChars` 提到 `200000`（12 万字符级的条目否则会被截断；该项仍是纯配置，写在 profile patch 里）。用 Firecrawl 抓取则天然带结构（`onlyMainContent`），不必调这些开关。
 
 ### Firecrawl
 

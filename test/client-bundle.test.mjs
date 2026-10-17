@@ -50,6 +50,7 @@ function makeContext(options = {}) {
       fetchFallbackToLocal: options.fallback ?? true,
       tavilySearchDepth: options.depth ?? 'basic',
       jinaReaderKeyMode: options.jinaMode ?? 'anonymous',
+      jinaRespondWith: options.respondWith ?? 'default',
       tavilyApiKeyEnv: 'TAVILY_API_KEY',
       jinaApiKeyEnv: 'JINA_API_KEY',
       firecrawlApiKeyEnv: 'FIRECRAWL_API_KEY',
@@ -194,6 +195,11 @@ test('pure readers keep the UI honest', async () => {
   assert.equal(internals.readJinaReaderKeyMode({ value: { jinaReaderKeyMode: 'nope' } }), 'anonymous')
   assert.equal(internals.readJinaReaderKeyMode({ value: {} }), 'anonymous')
 
+  assert.deepEqual(internals.JINA_RESPOND_WITH, ['default', 'markdown'])
+  assert.equal(internals.readJinaRespondWith({ value: { jinaRespondWith: 'markdown' } }), 'markdown')
+  assert.equal(internals.readJinaRespondWith({ value: { jinaRespondWith: 'readerlm-v2' } }), 'default')
+  assert.equal(internals.readJinaRespondWith({ value: {} }), 'default')
+
   assert.equal(internals.readFallback({ value: { fetchFallbackToLocal: false } }), false)
   assert.equal(internals.readFallback({ value: {} }), true)
 
@@ -260,6 +266,7 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
     fetchSource: 'jina',
     depth: 'basic',
     jinaMode: 'auto',
+    respondWith: 'markdown',
     fallback: false,
     keyStates: { tavily: 'set', jina: 'unset', firecrawl: 'unset' },
   })
@@ -267,6 +274,8 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
   assert.deepEqual(jina.providers.map((row) => row.selected), [true, false, false])
   assert.deepEqual(jina.jinaModes.map((row) => row.id), ['anonymous', 'auto', 'api'])
   assert.deepEqual(jina.jinaModes.map((row) => row.selected), [false, true, false])
+  assert.deepEqual(jina.respondWith.map((row) => row.id), ['default', 'markdown'])
+  assert.deepEqual(jina.respondWith.map((row) => row.selected), [false, true])
   assert.equal(jina.fallback, false)
   assert.equal(jina.fallbackApplies, true)
 
@@ -275,10 +284,12 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
     fetchSource: 'local',
     depth: 'basic',
     jinaMode: 'anonymous',
+    respondWith: 'default',
     fallback: true,
     keyStates: { tavily: 'set', jina: 'set', firecrawl: 'unset' },
   })
   assert.deepEqual(local.jinaModes, [])
+  assert.deepEqual(local.respondWith, [])
   assert.equal(local.fallbackApplies, false)
   assert.equal(local.providers.find((row) => row.id === 'firecrawl').keyMissing, true)
 })
