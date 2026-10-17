@@ -6,7 +6,7 @@ import fs from 'node:fs/promises'
  * Load `lib/client.js` the way the browser module table does: publish it through
  * a fake `window.__ModuleLoader__`, then hand the factory a fake `require`.
  */
-async function loadBundle() {
+async function loadBundle(reactOverride) {
   const source = await fs.readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let entry
   const window = {
@@ -20,7 +20,7 @@ async function loadBundle() {
   assert.ok(entry, 'bundle did not call window.__ModuleLoader__.load')
   assert.equal(entry.id, 'dsh-search-switch')
 
-  const react = {
+  const react = reactOverride ?? {
     createElement: (type, props, ...children) => ({ type, props, children }),
     useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
     useEffect: () => {},
@@ -410,6 +410,192 @@ test('flips the popover above when the composer sits at the bottom', async () =>
   assert.equal(sized.above, true)
   assert.equal(sized.width, MENU_WIDTH)
   assert.equal(sized.left, 900 - MENU_WIDTH)
+})
+
+/** A minimal stateful React stand-in: enough hooks to click through the menu. */
+function makeStatefulReact() {
+  const hooks = []
+  let index = 0
+  let rerender = () => {}
+  return {
+    react: {
+      createElement: (type, props, ...children) => ({ type, props, children }),
+      useState(initial) {
+        const at = index++
+        if (!(at in hooks)) hooks[at] = typeof initial === 'function' ? initial() : initial
+        return [hooks[at], (next) => {
+          const value = typeof next === 'function' ? next(hooks[at]) : next
+          if (Object.is(value, hooks[at])) return
+          hooks[at] = value
+          rerender()
+        }]
+      },
+      useRef(initial) {
+        const at = index++
+        if (!(at in hooks)) hooks[at] = { current: initial }
+        return hooks[at]
+      },
+      useCallback(callback) {
+        index++
+        return callback
+      },
+      useEffect() {
+        index++
+      },
+      useSyncExternalStore(_subscribe, getSnapshot) {
+        index++
+        return getSnapshot()
+      },
+    },
+    render(component) {
+      index = 0
+      return component()
+    },
+    onRerender(callback) {
+      rerender = callback
+    },
+  }
+}
+
+/** Every element of the fake tree that satisfies one predicate. */
+function collectElements(node, predicate, found = []) {
+  if (node === null || node === undefined) return found
+  if (Array.isArray(node)) {
+    for (const child of node) collectElements(child, predicate, found)
+    return found
+  }
+  if (typeof node !== 'object') return found
+  if (predicate(node)) found.push(node)
+  collectElements(node.children, predicate, found)
+  return found
+}
+
+/** Concatenate the text nodes below one fake element. */
+function textOf(node) {
+  if (node === null || node === undefined) return ''
+  if (typeof node === 'string') return node
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (typeof node !== 'object') return ''
+  return textOf(node.children)
+}
+
+/** Render the composer control with working state so clicks can drive it. */
+async function driveComposer(options) {
+  const renderer = makeStatefulReact()
+  const { module } = await loadBundle(renderer.react)
+  const { context, registrations, form } = makeContext(options)
+  module.apply(context)
+  const entry = registrations.find((row) => row.registration.name === 'conversation.input.left')
+  assert.ok(entry, 'composer control was not registered')
+  const props = entry.registration.inject()
+  let tree = null
+  const draw = () => {
+    tree = renderer.render(() => entry.component(props))
+  }
+  renderer.onRerender(draw)
+  draw()
+  return { tree: () => tree, form }
+}
+
+test('the two-level drawer drills, toggles, and reveals hints on hover', async () => {
+  const previousWindow = globalThis.window
+  globalThis.window = { innerWidth: 1200, innerHeight: 800 }
+  try {
+    const { tree, form } = await driveComposer({ active: 'tavily', fetchSource: 'jina' })
+    const calls = []
+    form.set = async (field, value) => {
+      calls.push([field, value])
+      return true
+    }
+    const find = (predicate) => collectElements(tree(), predicate)[0] ?? null
+    const findMany = (predicate) => collectElements(tree(), predicate)
+    const click = (element) => {
+      assert.ok(element, 'expected an element to click')
+      element.props.onClick({ stopPropagation() {}, preventDefault() {} })
+    }
+    // Let the host write settle, otherwise the next choose sees a pending write.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+    const fakeDot = {
+      matches: () => true,
+      getBoundingClientRect: () => ({ top: 400, bottom: 414, left: 600, right: 614, width: 14, height: 14 }),
+    }
+
+    // The search popover opens on the root cells, not on a flat provider list.
+    click(find((node) => node.props && node.props['data-trigger'] === 'search'))
+    const searchMenu = find((node) => node.props && node.props.role === 'menu')
+    assert.equal(searchMenu.props['data-menu'], 'search')
+    const rootCells = findMany((node) => node.props && node.props['data-drawer'])
+    assert.deepEqual(rootCells.map((node) => node.props['data-drawer']), ['source', 'depth'])
+    assert.match(textOf(rootCells[0]), /source\.tavily/)
+    assert.match(textOf(rootCells[1]), /depth\.basic/)
+
+    // Drilling into the provider list keeps descriptions out of the rows.
+    click(rootCells[0])
+    const providerOptions = findMany((node) => node.props && node.props['data-search-source'])
+    assert.deepEqual(providerOptions.map((node) => node.props['data-search-source']),
+      ['deepseek', 'deepseek-api', 'tavily', 'jina', 'firecrawl'])
+    assert.equal(collectElements(providerOptions[0], (node) => node.props && node.props.className === 'dssw-info').length, 1)
+    // The description lives in the hidden `?` payload, not as a visible row tip.
+    assert.equal(collectElements(providerOptions[0], (node) => node.props && node.props.className === 'dssw-sr-only').length, 1)
+    assert.equal(collectElements(providerOptions[0], (node) => node.props && node.props.className === 'dssw-menu-tip').length, 0)
+
+    // Hovering the dot shows its hint; leaving hides it again.
+    const jina = providerOptions.find((node) => node.props['data-search-source'] === 'jina')
+    const jinaDot = collectElements(jina, (node) => node.props && node.props.className === 'dssw-info')[0]
+    jinaDot.props.onMouseEnter({ currentTarget: fakeDot })
+    const tip = find((node) => node.props && node.props.role === 'tooltip')
+    assert.equal(tip.props['data-tip'], 'tip.search.jina')
+    jinaDot.props.onMouseLeave()
+    assert.equal(find((node) => node.props && node.props.role === 'tooltip'), null)
+
+    // Selecting a provider closes the popover and writes the field.
+    click(jina)
+    await settle()
+    assert.deepEqual(calls, [['active', 'jina']])
+    assert.equal(find((node) => node.props && node.props.role === 'menu'), null)
+
+    // The depth cell is its own drilled list.
+    click(find((node) => node.props && node.props['data-trigger'] === 'search'))
+    click(findMany((node) => node.props && node.props['data-drawer'] === 'depth')[0])
+    const depthOptions = findMany((node) => node.props && node.props['data-depth'])
+    assert.deepEqual(depthOptions.map((node) => node.props['data-depth']), ['basic', 'advanced', 'fast', 'ultra-fast'])
+    click(depthOptions[1])
+    await settle()
+    assert.deepEqual(calls[1], ['tavilySearchDepth', 'advanced'])
+    assert.equal(find((node) => node.props && node.props.role === 'menu'), null)
+
+    // The fetch popover exposes provider/key-mode/content-mode cells plus the toggle.
+    click(find((node) => node.props && node.props['data-trigger'] === 'fetch'))
+    const fetchCells = findMany((node) => node.props && node.props['data-drawer'])
+    assert.deepEqual(fetchCells.map((node) => node.props['data-drawer']), ['source', 'mode', 'respond'])
+    const fallback = find((node) => node.props && node.props['data-fallback'])
+    assert.equal(fallback.props['data-fallback'], 'on')
+    click(fallback)
+    await settle()
+    assert.deepEqual(calls[2], ['fetchFallbackToLocal', false])
+    assert.ok(find((node) => node.props && node.props.role === 'menu'), 'the toggle must keep the popover open')
+
+    // Drilled panes can go back to the root cells.
+    click(findMany((node) => node.props && node.props['data-drawer'] === 'mode')[0])
+    const modeOptions = findMany((node) => node.props && node.props['data-jina-mode'])
+    assert.deepEqual(modeOptions.map((node) => node.props['data-jina-mode']), ['anonymous', 'auto', 'api'])
+    click(find((node) => node.props && node.props['data-drawer-back']))
+    assert.deepEqual(
+      findMany((node) => node.props && node.props['data-drawer']).map((node) => node.props['data-drawer']),
+      ['source', 'mode', 'respond'],
+    )
+
+    click(findMany((node) => node.props && node.props['data-drawer'] === 'respond')[0])
+    const respondOptions = findMany((node) => node.props && node.props['data-jina-respond'])
+    assert.deepEqual(respondOptions.map((node) => node.props['data-jina-respond']), ['default', 'markdown'])
+    click(respondOptions[1])
+    await settle()
+    assert.deepEqual(calls[3], ['jinaRespondWith', 'markdown'])
+    assert.equal(find((node) => node.props && node.props.role === 'menu'), null)
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window
+    else globalThis.window = previousWindow
+  }
 })
 
 test('hint bubbles sit above their dot and stay inside the viewport', async () => {
