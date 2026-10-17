@@ -11,6 +11,8 @@ import {
   mapSearchResponse,
   normaliseBaseURL,
   normaliseKeyMode,
+  normaliseRespondWith,
+  normaliseTargetSelector,
   normaliseTimeoutSeconds,
   splitSites,
 } from '../lib/jina-mapping.js'
@@ -68,6 +70,35 @@ test('applies the optional Reader knobs and the configured key', () => {
 test('rejects unusable Reader inputs', () => {
   assert.throws(() => buildReaderRequest({ url: '   ', readerURL: 'https://r.jina.ai' }), /non-empty URL/u)
   assert.throws(() => buildReaderRequest({ url: 'https://example.com', readerURL: 'not a url' }), /not a valid URL/u)
+})
+
+test('sends the readability bypass and target selector only when configured', () => {
+  const plain = buildReaderRequest({ url: 'https://example.com', readerURL: 'https://reader.test' })
+  assert.equal(plain.init.headers['x-respond-with'], undefined)
+  assert.equal(plain.init.headers['x-target-selector'], undefined)
+
+  const structured = buildReaderRequest({
+    url: 'https://example.com',
+    readerURL: 'https://reader.test',
+    respondWith: 'markdown',
+    targetSelector: '  #mw-content-text  ',
+  })
+  assert.equal(structured.init.headers['x-respond-with'], 'markdown')
+  assert.equal(structured.init.headers['x-target-selector'], '#mw-content-text')
+
+  // Unknown pipelines fall back to the frugal default, and blank selectors are dropped.
+  const unknown = buildReaderRequest({
+    url: 'https://example.com',
+    readerURL: 'https://reader.test',
+    respondWith: 'readerlm-v2',
+    targetSelector: '   ',
+  })
+  assert.equal(unknown.init.headers['x-respond-with'], undefined)
+  assert.equal(unknown.init.headers['x-target-selector'], undefined)
+  assert.equal(normaliseRespondWith('markdown'), 'markdown')
+  assert.equal(normaliseRespondWith(undefined), 'default')
+  assert.equal(normaliseTargetSelector(' main '), 'main')
+  assert.equal(normaliseTargetSelector(undefined), '')
 })
 
 test('builds an encoded Search GET with repeated site filters', () => {

@@ -115,7 +115,11 @@ dsh plugin --profile desktop add dsh-search-switch
 | `jinaRetainLinks` | `all` | `all` / `none` / `text` |
 | `jinaLinksSummary` | `false` | 追加 `Buttons & Links` 汇总段 |
 | `jinaBypassCache` | `false` | `x-no-cache` |
+| `jinaRespondWith` | `default` | `default`（readability，省 token） / `markdown`（绕过 readability，保留完整标题结构） |
+| `jinaTargetSelector` | 空 | `x-target-selector`，如 `article`、`main`、`#mw-content-text`；配合 `markdown` 模式可裁掉导航 |
 | `jinaSite` | 空 | 搜索站内过滤，逗号分隔多个 hostname |
+
+> **Wikipedia 这类长条目**：默认 readability 会把 `##` 小节标题剥掉（正文完整但结构变平）。要保留结构，把 `jinaRespondWith` 设为 `markdown` 并配一个 `jinaTargetSelector`（Wikipedia 用 `#mw-content-text`）；同时把 `fetchMaxChars` 提到 `200000`，否则 12 万字符级的条目会被截断。用 Firecrawl 抓取则天然带结构（`onlyMainContent`），不必调这两个开关。
 
 ### Firecrawl
 
@@ -160,7 +164,7 @@ patch 会整段替换该行的 `config`，请把要保留的键一并写回。
    - `firecrawl` → `POST {firecrawlBaseURL}/v2/search`（key 可选）；
    - `deepseek` → 直接调用 base 层注册的 `deepseek-official` 实例，完全复用宿主鉴权与端点逻辑。
 3. 抓取调度器每次读取 `fetchSource`：
-   - `jina` → `POST {jinaReaderURL}/`，表单 `url=<目标>`（保留 `#` 片段），`Accept: application/json` 取 `data.content`；
+   - `jina` → `POST {jinaReaderURL}/`，表单 `url=<目标>`（保留 `#` 片段），`Accept: application/json` 取 `data.content`；可选 `x-respond-with` / `x-target-selector` 保住标题结构或裁掉导航；
    - `firecrawl` → `POST {firecrawlBaseURL}/v2/scrape`，`formats: ["markdown"]` 取 `data.markdown`；
    - `local` → 直接调用 base 层注册的 `http` 实例（URL 安全校验、公网地址限制都由宿主负责）。
    非 `local` 来源失败（取消除外）且 `fetchFallbackToLocal` 为真时，自动再用本地抓取一次；两次都失败时抛出第一次的错误码，消息里注明回落也失败。

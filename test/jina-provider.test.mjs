@@ -122,6 +122,29 @@ test('sends the key only when the reader mode asks for it', async () => {
   })
 })
 
+test('forwards the response pipeline and target selector headers', async () => {
+  let headers
+  await withServer(async (request, response) => {
+    await readBody(request)
+    headers = request.headers
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ code: 200, data: { content: '## Heading\ntext' } }))
+  }, async (baseURL) => {
+    const plain = makeProvider(baseURL)
+    await plain.fetch({ url: 'https://example.com' })
+    assert.equal(headers['x-respond-with'], undefined)
+    assert.equal(headers['x-target-selector'], undefined)
+
+    const structured = makeProvider(baseURL, {
+      options: { respondWith: 'markdown', targetSelector: '#mw-content-text' },
+    })
+    const page = await structured.fetch({ url: 'https://example.com' })
+    assert.equal(headers['x-respond-with'], 'markdown')
+    assert.equal(headers['x-target-selector'], '#mw-content-text')
+    assert.equal(page.body.content, '## Heading\ntext')
+  })
+})
+
 test('api mode without a key fails before dispatching', async () => {
   let called = false
   const provider = createJinaProvider({
