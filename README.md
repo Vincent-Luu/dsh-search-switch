@@ -55,6 +55,10 @@ dsh plugin --profile desktop add dsh-search-switch
 
 安装会修改 profile 的依赖与 `dsh.profile.bundles`，因此**需要重启 dsh**（桌面版重启应用；Web 版重启 `dsh web`）才能加载本 bundle。**替换已安装的包也必须重启**，否则浏览器仍会跑旧一代 JS。
 
+### 兼容性
+
+插件在 manifest 里声明 `engines.dsh: ">=0.2.0-rc.2 <0.3.0-0"`：DSH 主机的兼容性检查只认这个字段（有它就不再逐个比对 `@deepseek-ai/dsh-*` peer 版本），所以 0.2.0-rc.2、0.2.1-rc.1 以及后续 0.2.x 都能加载，不会再出现"要求 0.2.0-rc.2 → 与 0.2.1-rc.1 不兼容"的提示。`@deepseek-ai/dsh-*` peer 仍保留为文档性约束（标记为 optional，因为它们由宿主运行时提供，不由 profile 安装）。升级到 DSH 0.3 时需要重新适配并放宽这个区间。
+
 ## 使用
 
 1. 打开任意会话，输入框工具栏出现 `网页搜索 · 原生 ▾` 与 `网页抓取 · Jina Reader ▾`。

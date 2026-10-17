@@ -1,6 +1,6 @@
 {
   "name": "dsh-search-switch",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Route DSH web_search and web_fetch from the session composer bar: native DeepSeek / Tavily / Jina / Firecrawl search, and Jina Reader / local HTTP / Firecrawl URL-to-markdown fetch.",
   "type": "module",
   "main": "lib/index.js",
@@ -37,7 +37,8 @@
   },
   "homepage": "https://github.com/Vincent-Luu/dsh-search-switch#readme",
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0"
   },
   "dsh": {
     "bundle": {
@@ -55,11 +56,18 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-web": "0.2.0-rc.2",
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-credentials": ">=0.2.0-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-launch-environment": ">=0.2.0-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-web": ">=0.2.0-rc.2 <0.3.0-0",
     "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-credentials": { "optional": true },
+    "@deepseek-ai/dsh-launch-environment": { "optional": true },
+    "@deepseek-ai/dsh-web": { "optional": true },
+    "@deepseek-ai/schemastery": { "optional": true }
   },
   "scripts": {
     "check": "node --check lib/index.js && node --check lib/dispatch.js && node --check lib/credentials.js && node --check lib/transport.js && node --check lib/tavily-provider.js && node --check lib/tavily-mapping.js && node --check lib/jina-provider.js && node --check lib/jina-mapping.js && node --check lib/firecrawl-provider.js && node --check lib/firecrawl-mapping.js && node --check lib/client.js",
