@@ -23,10 +23,8 @@
 从 GitHub 安装（公开仓库，推荐；pnpm 会把 commit 固定下来）：
 
 ```sh
-dsh plugin --profile desktop add github:<your-github-user>/dsh-search-switch
+dsh plugin --profile desktop add github:Vincent-Luu/dsh-search-switch
 ```
-
-把 `<your-github-user>` 换成仓库实际的 owner（即 GitHub 用户名）。
 
 本包没有构建步骤（`lib/` 直接入库），所以不需要在 profile 的 `pnpm-workspace.yaml` 里配 `allowBuilds`。
 
