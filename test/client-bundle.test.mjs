@@ -254,3 +254,29 @@ test('surfaces a latency tier on the more trigger', async () => {
   assert.match(more.props.className, /dssw-seg--on/u)
   assert.ok(more.children.join('').includes('depth.ultra-fast'))
 })
+
+test('flips the popover above when the composer sits at the bottom', async () => {
+  const { module } = await loadBundle()
+  const { menuPlacementFor } = module.__internals
+  const viewport = { width: 1200, height: 800 }
+
+  // 700..730 leaves only 56px below after the gap and margin: not enough for 84.
+  const flipped = menuPlacementFor({ top: 700, bottom: 730, right: 900 }, viewport, 84)
+  assert.equal(flipped.above, true)
+  assert.ok(flipped.top < 700)
+  assert.ok(flipped.top >= 8)
+
+  // Room below: opens downward, directly under the trigger plus the gap.
+  const below = menuPlacementFor({ top: 300, bottom: 330, right: 900 }, viewport, 84)
+  assert.equal(below.above, false)
+  assert.equal(below.top, 336)
+
+  // Clamped inside the right edge.
+  const right = menuPlacementFor({ top: 100, bottom: 130, right: 1199 }, viewport, 84)
+  assert.equal(right.left, viewport.width - 232 - 8)
+
+  // Neither side fits: clamped to the top margin so the rows stay reachable
+  // through the menu's own scrolling.
+  const short = menuPlacementFor({ top: 10, bottom: 40, right: 900 }, { width: 1200, height: 60 }, 84)
+  assert.equal(short.top, 8)
+})

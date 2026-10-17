@@ -159,6 +159,6 @@ client 改动后刷新页面即可；host 改动、bundle 列表或 manifest 改
 - **全局语义**：`ctx.web.search()` 没有会话上下文参数，来源与强度对当前 profile 的所有会话生效。
 - **两处非公开依赖**：运行期 pin 依赖 `ctx.web.searchProviderId` 可写，原生委托依赖 `ctx.web.searchProviders`（Map）。二者在 dsh 0.2.0-rc.2 上可用；升级 dsh 后若失效，插件会告警而不是静默失效，替代方案是静态 pin `web.searchProvider`。
 - **强度分成两条轴**：`basic`/`advanced` 是质量档，`fast`/`ultra-fast` 是延迟档；`ultra-fast` 每个 URL 只返回一个 NLP 摘要（不发 `chunks_per_source`）。界面按「两档 + 更多」呈现，避免把 4 个语义不同的档位平铺成一条轴。
-- **弹层定位**：`更多` 弹层用 `position: fixed` 自行定位（客户端模块表没有 `react-dom`，无法用 portal）；若未来宿主给输入框加了 `transform`/`filter` 祖先，弹层可能被裁切。
+- **弹层定位**：`更多` 弹层用 `position: fixed` 自行定位（客户端模块表没有 `react-dom`，无法用 portal）。空间不足时自动**向上翻转**、水平/垂直夹取在视口内，超高时弹层内部滚动，因此输入框贴底时也能点到每一项。若未来宿主给输入框加了 `transform`/`filter` 祖先，`fixed` 定位可能被该祖先的包含块影响。
 - **Tavily 契约**：字段与枚举按官方 [Tavily Search API 参考](https://docs.tavily.com/documentation/api-reference/endpoint/search)（OpenAPI 1.0.0，2026-08 查阅）实现；`include_published_date` 仍为官方 beta 字段。
 - **凭据**：密钥存于 dsh 凭据库；`dsh-search-switch` 不写任何自有存储，选择由宿主写入 profile patch。
