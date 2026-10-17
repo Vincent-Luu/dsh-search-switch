@@ -1,0 +1,15 @@
+# Bundle layer applied when a profile lists this package.
+#
+# The row is the only thing this layer adds. Provider SELECTION is pinned at
+# runtime by the plugin itself (it writes ctx.web.searchProviderId and restores
+# the previous value on dispose), so this patch deliberately does NOT override
+# the `web` row's searchProvider: a profile that disables this row must keep
+# searching through the composition's own pin instead of failing every call
+# with WEB_PROVIDER_CONFIGURED_MISSING.
+#
+# The row id doubles as the settings namespace the browser half writes to
+# (ctx.configForms.get('search-switch')) and as the persisted key in the
+# profile's cordis.patch.yml. Renaming it is a breaking change.
+- insert:
+    - id: search-switch
+      name: dsh-search-switch
