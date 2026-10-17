@@ -14,10 +14,11 @@
 ## 功能
 
 - 两个胶囊控件挂在 `conversation.input.left`（权限 / Plan 标签之后、模型选择之前）：`网页搜索 · <当前提供商> ▾`、`网页抓取 · <当前提供商> ▾`，只在本插件被宿主服务时出现。
-- 两个大类的弹层各自列出提供商、说明和该提供商专属选项；`↑`/`↓` 移动、`Enter` 选中、`Esc` 关闭，弹层会随可用空间上翻/夹取，超高时内部滚动。
+- 弹层采用与「模型 / 推理等级」一致的**二级抽屉**：根层只显示 `搜索提供商 · Tavily ›` 这样的「标签 + 当前值 + 箭头」行，点进去才是列表；`‹` 或 `Esc` 返回根层，再按一次关闭。`↑`/`↓` 移动、`Enter` 选中，弹层随可用空间上翻/夹取，超高时内部滚动。
+- 列表项不再平铺长说明：每行只保留名称、缺失 key 的琥珀点与 `✓`，说明收进右侧 `?` 提示点，鼠标悬浮（或键盘聚焦）显示；根层不写说明，信息密度与模型选择器一致。
 - 两条轴都是插件的 `.volatile()` 配置：写入即生效，下一次 `web_search` / `web_fetch` 就使用新值。
-- **搜索弹层**：5 个提供商（原生 / 原生 API / Tavily / Jina / Firecrawl）；选中 Tavily 时下方追加 4 档强度；Jina 行标注「搜索需要 API key」。
-- **抓取弹层**：4 个提供商（Jina Reader / 本地 / 原生 API / Firecrawl）；选中 Jina 时追加 `Jina key 模式`（匿名 / 自动 / API Key）与 `Jina 内容模式`（精简 / 完整结构）；另有「抓取失败自动回落本地」开关。
+- **搜索弹层**：根层是「搜索提供商」；选中 Tavily 时追加「搜索强度」。提供商列表 5 项（原生 / 原生 API / Tavily / Jina / Firecrawl），强度列表 4 档（基础 / 高级 / 快速 / 极速）。
+- **抓取弹层**：根层是「抓取提供商」，Jina 下追加「Key 模式」「内容模式」，最下面是「失败自动回落」开关（直接切换，不关弹层）。列表分别为 4 家提供商、匿名 / 自动 / API Key、精简 / 完整结构。
 - **默认套路**：`web_fetch → r.jina.ai` 匿名模式，日常读取不花 key、不需要额度；碰到内网/被反爬/限流的页面自动回落 DSH 本地抓取。
 - 缺 key 时对应胶囊显示琥珀色圆点（Tavily 搜索 / Jina 搜索 / Jina Reader 的 `api` 模式）；Firecrawl 与匿名 Reader 不报警。
 - 「设置 → 插件 → dsh-search-switch」页可分别填写 Tavily / Jina / Firecrawl 的 API Key（写入凭据库，不写入设置文件），可填 Jina 抓取选择器（CSS），并显示当前搜索与抓取提供商。
@@ -66,11 +67,12 @@ dsh plugin --profile desktop add dsh-search-switch
 ## 使用
 
 1. 打开任意会话，输入框工具栏出现 `网页搜索 · 原生 ▾` 与 `网页抓取 · Jina Reader ▾`。
-2. 点「网页搜索」：弹层里选 原生 / 原生 API / Tavily / Jina / Firecrawl；选 Tavily 后同一弹层追加 `基础`、`高级`、`快速`、`极速`（`advanced` 2 积分/次，其余 1 积分/次）。
-3. 点「网页抓取」：弹层里选 Jina Reader / 本地 / 原生 API / Firecrawl；Jina 下可切 `匿名`、`自动`（有 key 就用）、`API Key`（始终用 key，500 RPM、按 token 计费）。
+2. 点「网页搜索」→「搜索提供商」，在列表里选 原生 / 原生 API / Tavily / Jina / Firecrawl；选 Tavily 后根层会出现「搜索强度」，再点进去选 `基础`、`高级`、`快速`、`极速`（`advanced` 2 积分/次，其余 1 积分/次）。
+3. 点「网页抓取」→「抓取提供商」，选 Jina Reader / 本地 / 原生 API / Firecrawl；Jina 下根层还有「Key 模式」（匿名 / 自动 / API Key）与「内容模式」（精简 / 完整结构）。
 4. 「原生」= DSH 的 LLM 辅助搜索（`deepseek-official`，搜索结果经模型整理）；「原生 API」= DeepSeek 官方 Search / Fetch API（`deepseek-search-api` / `deepseek-fetch-api`，`api.deepseek.com/v1/tools`），两者都复用 `DEEPSEEK_API_KEY`，在模型页配置。
 5. 需要 key 时到 **设置 → 插件 → dsh-search-switch** 填，或让 dsh 进程环境里有对应的 `TAVILY_API_KEY` / `JINA_API_KEY` / `FIRECRAWL_API_KEY`。
-6. 关掉「抓取失败自动回落本地」后，第三方抓取的失败会直接冒泡给模型，不再改用本地抓取。
+6. 根层的「失败自动回落」直接开关：关掉后，第三方抓取的失败会直接冒泡给模型，不再改用本地抓取。
+7. 不确定某一项是什么时，把鼠标移到行尾的 `?` 上；说明只在那里出现，不会把列表撑长。
 
 ### 各家的 key 必需性
 

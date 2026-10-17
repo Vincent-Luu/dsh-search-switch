@@ -247,6 +247,14 @@ test('the search popover model carries providers and Tavily depth only', async (
     keyStates: { tavily: 'unset', jina: 'unset', firecrawl: 'set' },
   }
   const model = searchMenuModel(state)
+  // The root pane is the model-picker pair: provider cell + Tavily depth cell.
+  assert.deepEqual(model.root.map((row) => row.id), ['source', 'depth'])
+  assert.equal(model.root[0].labelKey, 'row.searchSource')
+  assert.equal(model.root[0].valueKey, 'source.tavily')
+  assert.equal(model.root[0].warning, 'tavily')
+  assert.equal(model.root[1].labelKey, 'row.searchDepth')
+  assert.equal(model.root[1].valueKey, 'depth.advanced')
+  assert.equal(model.root[1].warning, null)
   assert.deepEqual(model.providers.map((row) => row.id), ['deepseek', 'deepseek-api', 'tavily', 'jina', 'firecrawl'])
   assert.deepEqual(model.providers.map((row) => row.selected), [false, false, true, false, false])
   assert.deepEqual(model.providers.map((row) => row.keyMissing), [false, false, true, true, false])
@@ -254,7 +262,10 @@ test('the search popover model carries providers and Tavily depth only', async (
   assert.deepEqual(model.depths.map((row) => row.selected), [false, true, false, false])
 
   for (const source of ['deepseek', 'jina', 'firecrawl']) {
-    assert.deepEqual(searchMenuModel({ ...state, searchSource: source }).depths, [])
+    const other = searchMenuModel({ ...state, searchSource: source })
+    assert.deepEqual(other.depths, [])
+    assert.deepEqual(other.root.map((row) => row.id), ['source'])
+    assert.equal(other.root[0].valueKey, 'source.' + source)
   }
 })
 
@@ -270,6 +281,11 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
     fallback: false,
     keyStates: { tavily: 'set', jina: 'unset', firecrawl: 'unset' },
   })
+  // Jina owns the provider, key-mode, and content-mode cells; the local
+  // fallback toggle follows them as its own root row.
+  assert.deepEqual(jina.root.map((row) => row.id), ['source', 'mode', 'respond'])
+  assert.deepEqual(jina.root.map((row) => row.valueKey), ['source.jina', 'jinaMode.auto', 'respond.markdown'])
+  assert.deepEqual(jina.root.map((row) => row.warning), [null, null, null])
   assert.deepEqual(jina.providers.map((row) => row.id), ['jina', 'local', 'deepseek-api', 'firecrawl'])
   assert.deepEqual(jina.providers.map((row) => row.selected), [true, false, false, false])
   assert.deepEqual(jina.jinaModes.map((row) => row.id), ['anonymous', 'auto', 'api'])
@@ -278,6 +294,18 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
   assert.deepEqual(jina.respondWith.map((row) => row.selected), [false, true])
   assert.equal(jina.fallback, false)
   assert.equal(jina.fallbackApplies, true)
+
+  // Jina API mode without a key raises the warning on its root cell.
+  const apiMode = fetchMenuModel({
+    searchSource: 'deepseek',
+    fetchSource: 'jina',
+    depth: 'basic',
+    jinaMode: 'api',
+    respondWith: 'default',
+    fallback: true,
+    keyStates: { tavily: 'set', jina: 'unset', firecrawl: 'set' },
+  })
+  assert.equal(apiMode.root.find((row) => row.id === 'mode').warning, 'jinaApi')
 
   const local = fetchMenuModel({
     searchSource: 'deepseek',
@@ -288,6 +316,7 @@ test('the fetch popover model carries providers, Jina mode, and the fallback', a
     fallback: true,
     keyStates: { tavily: 'set', jina: 'set', firecrawl: 'unset' },
   })
+  assert.deepEqual(local.root.map((row) => row.id), ['source'])
   assert.deepEqual(local.jinaModes, [])
   assert.deepEqual(local.respondWith, [])
   assert.equal(local.fallbackApplies, false)
@@ -351,7 +380,7 @@ test('the pills reflect the defaults and disable themselves when read-only', asy
 
 test('flips the popover above when the composer sits at the bottom', async () => {
   const { module } = await loadBundle()
-  const { menuPlacementFor } = module.__internals
+  const { menuPlacementFor, MENU_WIDTH } = module.__internals
   const viewport = { width: 1200, height: 800 }
 
   // 700..730 leaves only 56px below after the gap and margin: not enough for 84.
@@ -365,19 +394,42 @@ test('flips the popover above when the composer sits at the bottom', async () =>
   assert.equal(below.above, false)
   assert.equal(below.top, 336)
 
-  // Clamped inside the right edge.
+  // Clamped inside the right edge, at the compact drawer width.
+  assert.equal(MENU_WIDTH, 260)
   const right = menuPlacementFor({ top: 100, bottom: 130, right: 1199 }, viewport, 84)
-  assert.equal(right.left, viewport.width - 320 - 8)
-  assert.equal(right.width, 320)
+  assert.equal(right.left, viewport.width - MENU_WIDTH - 8)
+  assert.equal(right.width, MENU_WIDTH)
 
   // Neither side fits: clamped to the top margin so the rows stay reachable
   // through the menu's own scrolling.
   const short = menuPlacementFor({ top: 10, bottom: 40, right: 900 }, { width: 1200, height: 60 }, 84)
   assert.equal(short.top, 8)
 
-  // The size object carries both dimensions for the two wide popovers.
-  const sized = menuPlacementFor({ top: 600, bottom: 630, right: 900 }, viewport, { width: 320, height: 360 })
+  // The size object carries both dimensions for the two popovers.
+  const sized = menuPlacementFor({ top: 600, bottom: 630, right: 900 }, viewport, { width: MENU_WIDTH, height: 240 })
   assert.equal(sized.above, true)
-  assert.equal(sized.width, 320)
-  assert.equal(sized.left, 900 - 320)
+  assert.equal(sized.width, MENU_WIDTH)
+  assert.equal(sized.left, 900 - MENU_WIDTH)
+})
+
+test('hint bubbles sit above their dot and stay inside the viewport', async () => {
+  const { module } = await loadBundle()
+  const { tipPlacementFor } = module.__internals
+  const viewport = { width: 1200, height: 800 }
+
+  const middle = tipPlacementFor({ top: 400, bottom: 414, left: 600, width: 14 }, viewport)
+  assert.equal(middle.above, true)
+  assert.equal(middle.top, 400 - 8)
+  assert.equal(middle.left, 607)
+  assert.equal(middle.transform, 'translate(-50%,-100%)')
+
+  // Near the top edge the bubble drops below the dot.
+  const top = tipPlacementFor({ top: 20, bottom: 34, left: 300, width: 14 }, viewport)
+  assert.equal(top.above, false)
+  assert.equal(top.top, 42)
+  assert.equal(top.transform, 'translateX(-50%)')
+
+  // A dot at the right edge keeps the bubble's box inside the viewport.
+  const right = tipPlacementFor({ top: 400, bottom: 414, left: 1190, width: 14 }, viewport)
+  assert.equal(right.left, viewport.width - 132 - 8)
 })
