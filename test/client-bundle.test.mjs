@@ -54,6 +54,35 @@ function makeContext(options = {}) {
       tavilyApiKeyEnv: 'TAVILY_API_KEY',
       jinaApiKeyEnv: 'JINA_API_KEY',
       firecrawlApiKeyEnv: 'FIRECRAWL_API_KEY',
+      fetchMaxChars: options.fetchMaxChars ?? 100000,
+      snippetMaxChars: 800,
+      jinaTimeoutSeconds: 20,
+      firecrawlTimeoutMs: 20000,
+      tavilyTopic: 'general',
+      tavilyAnswer: 'off',
+      tavilyChunksPerSource: 3,
+      tavilyIncludePublishedDate: true,
+      jinaEngine: 'auto',
+      jinaRetainImages: 'none',
+      jinaRetainLinks: 'all',
+      jinaLinksSummary: false,
+      jinaBypassCache: false,
+      jinaSite: '',
+      jinaTargetSelector: '',
+      firecrawlProxy: 'auto',
+      firecrawlOnlyMainContent: true,
+      firecrawlWaitFor: 0,
+      firecrawlMaxAgeMs: 172800000,
+      firecrawlBlockAds: true,
+      firecrawlSearchScrape: false,
+      tavilyBaseURL: '',
+      jinaReaderURL: '',
+      jinaSearchURL: '',
+      firecrawlBaseURL: '',
+      nativeProviderId: 'deepseek-official',
+      searchApiProviderId: 'deepseek-search-api',
+      fetchApiProviderId: 'deepseek-fetch-api',
+      localFetchProviderId: 'http',
     },
   }
   const form = {
@@ -449,7 +478,14 @@ function makeStatefulReact() {
     },
     render(component) {
       index = 0
-      return component()
+      const expand = (node) => {
+        if (node === null || node === undefined) return node
+        if (Array.isArray(node)) return node.map(expand)
+        if (typeof node !== 'object') return node
+        if (typeof node.type === 'function') return expand(node.type(node.props))
+        return { ...node, children: expand(node.children) }
+      }
+      return expand(component())
     },
     onRerender(callback) {
       rerender = callback
@@ -618,4 +654,176 @@ test('hint bubbles sit above their dot and stay inside the viewport', async () =
   // A dot at the right edge keeps the bubble's box inside the viewport.
   const right = tipPlacementFor({ top: 400, bottom: 414, left: 1190, width: 14 }, viewport)
   assert.equal(right.left, viewport.width - 132 - 8)
+})
+
+/** Render the plugin config card with working state so inputs can be driven. */
+async function driveSettingsCard(options) {
+  const renderer = makeStatefulReact()
+  const { module } = await loadBundle(renderer.react)
+  const { context, registrations, form, credentials } = makeContext(options)
+  module.apply(context)
+  const entry = registrations.find((row) => row.registration.name === 'plugins.bundle.config')
+  assert.ok(entry, 'settings card was not registered')
+  const props = entry.registration.inject()
+  let tree = null
+  const draw = () => {
+    tree = renderer.render(() => entry.component(props))
+  }
+  renderer.onRerender(draw)
+  draw()
+  return { tree: () => tree, form, credentials, entry }
+}
+
+test('advanced descriptors reject bad input before it reaches the host', async () => {
+  const { module } = await loadBundle()
+  const {
+    ADVANCED_FIELDS,
+    ADVANCED_DEFAULTS,
+    ADVANCED_RESET_FIELDS,
+    ADVANCED_SECTIONS,
+    validateAdvanced,
+    advancedStored,
+  } = module.__internals
+  const specOf = (field) => ADVANCED_FIELDS.find((spec) => spec.field === field)
+
+  assert.deepEqual(validateAdvanced(specOf('fetchMaxChars'), '150000'), { ok: true, value: 150000 })
+  assert.equal(validateAdvanced(specOf('fetchMaxChars'), '999').ok, false)
+  assert.equal(validateAdvanced(specOf('fetchMaxChars'), '12.5').ok, false)
+  assert.equal(validateAdvanced(specOf('fetchMaxChars'), 'abc').ok, false)
+  assert.equal(validateAdvanced(specOf('jinaTargetSelector'), ' #mw-content-text ').value, '#mw-content-text')
+  assert.deepEqual(validateAdvanced(specOf('tavilyTopic'), 'news'), { ok: true, value: 'news' })
+  assert.equal(validateAdvanced(specOf('tavilyTopic'), 'sports').ok, false)
+  assert.equal(validateAdvanced(specOf('tavilyIncludePublishedDate'), false).value, false)
+  assert.equal(validateAdvanced(specOf('tavilyBaseURL'), '').value, '')
+  assert.equal(validateAdvanced(specOf('tavilyBaseURL'), 'https://api.example.test').ok, true)
+  assert.equal(validateAdvanced(specOf('tavilyBaseURL'), 'api.example.test').ok, false)
+  assert.equal(validateAdvanced(specOf('jinaApiKeyEnv'), 'JINA_API_KEY').ok, true)
+  assert.equal(validateAdvanced(specOf('jinaApiKeyEnv'), 'jina-key').ok, false)
+  assert.equal(validateAdvanced(specOf('nativeProviderId'), 'deepseek-official').ok, true)
+  assert.equal(validateAdvanced(specOf('nativeProviderId'), 'bad id').ok, false)
+  assert.equal(validateAdvanced(specOf('jinaSite'), 'example.com').ok, true)
+  assert.equal(validateAdvanced(specOf('jinaSite'), 'https://example.com').ok, false)
+  assert.equal(validateAdvanced(specOf('firecrawlMaxAgeMs'), '-1').ok, false)
+
+  assert.equal(ADVANCED_DEFAULTS.fetchMaxChars, 100000)
+  assert.equal(ADVANCED_DEFAULTS.firecrawlMaxAgeMs, 172800000)
+  assert.ok(ADVANCED_SECTIONS.some((section) => section.id === 'env'))
+  // Resetting advanced defaults must not rename the credential variables.
+  assert.equal(ADVANCED_RESET_FIELDS.some((spec) => spec.field === 'jinaApiKeyEnv'), false)
+  assert.equal(ADVANCED_RESET_FIELDS.some((spec) => spec.field === 'tavilyBaseURL'), true)
+
+  assert.equal(advancedStored(specOf('fetchMaxChars'), { value: {} }), 100000)
+  assert.equal(advancedStored(specOf('tavilyTopic'), { value: {} }), 'general')
+  assert.equal(advancedStored(specOf('tavilyIncludePublishedDate'), { value: {} }), true)
+  assert.equal(advancedStored(specOf('firecrawlSearchScrape'), { value: {} }), false)
+  assert.equal(advancedStored(specOf('tavilyBaseURL'), { value: {} }), '')
+})
+
+test('the settings card groups credentials and exposes the advanced fields', async () => {
+  const { tree, entry } = await driveSettingsCard({})
+  assert.equal(entry.component({ ...entry.registration.inject(), view: 'summary' }), 'settings.summary')
+
+  const find = (predicate) => collectElements(tree(), predicate)[0] ?? null
+  const card = find((node) => node.props && node.props['data-settings'])
+  assert.ok(card, 'settings card root missing')
+  assert.deepEqual(
+    collectElements(card, (node) => node.props && node.props['data-key-row'])
+      .map((node) => node.props['data-key-row']),
+    ['tavily', 'jina', 'firecrawl'],
+  )
+
+  const advanced = find((node) => node.props && node.props['data-advanced'])
+  assert.equal(advanced.type, 'details')
+  assert.deepEqual(
+    collectElements(advanced, (node) => node.props && node.props['data-advanced-section'])
+      .map((node) => node.props['data-advanced-section']),
+    ['budget', 'tavily', 'jina', 'firecrawl', 'endpoints', 'env'],
+  )
+
+  const field = (name) => collectElements(tree(), (node) => node.props && node.props['data-advanced-field'] === name)[0]
+  assert.equal(field('fetchMaxChars').props.value, '100000')
+  assert.equal(field('tavilyTopic').props.value, 'general')
+  assert.equal(field('tavilyIncludePublishedDate').props['aria-checked'], 'true')
+  assert.equal(field('tavilyBaseURL').props.value, '')
+  assert.equal(field('jinaApiKeyEnv').props.value, 'JINA_API_KEY')
+})
+
+test('advanced fields validate, save on blur, and reset to defaults', async () => {
+  const { tree, form } = await driveSettingsCard({})
+  const calls = []
+  form.set = async (field, value) => {
+    calls.push([field, value])
+    return true
+  }
+  const find = (predicate) => collectElements(tree(), predicate)[0] ?? null
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+  const numberInput = () => find((node) => node.props && node.props['data-advanced-field'] === 'fetchMaxChars')
+
+  numberInput().props.onChange({ target: { value: '150000' } })
+  numberInput().props.onBlur()
+  await settle()
+  assert.deepEqual(calls, [['fetchMaxChars', 150000]])
+
+  // Invalid numbers show an error and never reach the host.
+  numberInput().props.onChange({ target: { value: '999' } })
+  numberInput().props.onBlur()
+  await settle()
+  assert.deepEqual(calls, [['fetchMaxChars', 150000]])
+  assert.equal(textOf(find((node) => node.props && node.props.className === 'dssw-field-error')), 'adv.error.number')
+
+  const topic = find((node) => node.props && node.props['data-advanced-field'] === 'tavilyTopic')
+  topic.props.onChange({ target: { value: 'news' } })
+  await settle()
+  assert.deepEqual(calls[1], ['tavilyTopic', 'news'])
+
+  const blockAds = find((node) => node.props && node.props['data-advanced-field'] === 'firecrawlBlockAds')
+  blockAds.props.onClick()
+  await settle()
+  assert.deepEqual(calls[2], ['firecrawlBlockAds', false])
+
+  // Two-step reset: arm, then confirm.
+  find((node) => node.props && node.props['data-advanced-reset']).props.onClick()
+  const armed = find((node) => node.props && node.props['data-advanced-reset'])
+  assert.match(armed.props.className, /dssw-btn--danger/)
+  armed.props.onClick()
+  await settle()
+  const resetCalls = calls.slice(3)
+  assert.ok(resetCalls.some(([field, value]) => field === 'fetchMaxChars' && value === 100000))
+  assert.ok(resetCalls.some(([field, value]) => field === 'firecrawlBlockAds' && value === true))
+  assert.equal(resetCalls.some(([field]) => field === 'tavilyApiKeyEnv'), false)
+})
+
+test('the compact key rows save secrets through the credential store', async () => {
+  const { tree, credentials } = await driveSettingsCard({})
+  const saves = []
+  credentials.set = async (reference, value) => {
+    saves.push([reference, value])
+    return { ok: true }
+  }
+  const find = (predicate) => collectElements(tree(), predicate)[0] ?? null
+  const row = find((node) => node.props && node.props['data-key-row'] === 'tavily')
+  const input = collectElements(row, (node) => node.type === 'input')[0]
+  input.props.onChange({ target: { value: 'tvly-test' } })
+  const button = collectElements(
+    find((node) => node.props && node.props['data-key-row'] === 'tavily'),
+    (node) => node.type === 'button',
+  )[0]
+  button.props.onClick()
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.deepEqual(saves, [['TAVILY_API_KEY', 'tvly-test']])
+})
+
+test('read-only settings disable the advanced write controls', async () => {
+  const { tree } = await driveSettingsCard({ writable: false })
+  const card = collectElements(tree(), (node) => node.props && node.props['data-settings'])[0]
+  assert.ok(card, 'settings card root missing')
+  assert.equal(
+    textOf(collectElements(card, (node) => node.props && node.props.className === 'dssw-error')[0]),
+    'settings.configReadonly',
+  )
+  const advancedInputs = collectElements(card, (node) => node.props && node.props['data-advanced-field'])
+  assert.ok(advancedInputs.length > 0)
+  assert.ok(advancedInputs.every((node) => node.props.disabled === true))
+  const reset = collectElements(card, (node) => node.props && node.props['data-advanced-reset'])[0]
+  assert.equal(reset.props.disabled, true)
 })

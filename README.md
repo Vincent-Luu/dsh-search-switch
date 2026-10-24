@@ -21,7 +21,7 @@
 - **抓取弹层**：根层是「抓取提供商」，Jina 下追加「Key 模式」「内容模式」，最下面是「失败自动回落」开关（直接切换，不关弹层）。列表分别为 4 家提供商、匿名 / 自动 / API Key、精简 / 完整结构。
 - **默认套路**：`web_fetch → r.jina.ai` 匿名模式，日常读取不花 key、不需要额度；碰到内网/被反爬/限流的页面自动回落 DSH 本地抓取。
 - 缺 key 时对应胶囊显示琥珀色圆点（Tavily 搜索 / Jina 搜索 / Jina Reader 的 `api` 模式）；Firecrawl 与匿名 Reader 不报警。
-- 「设置 → 插件 → dsh-search-switch」页可分别填写 Tavily / Jina / Firecrawl 的 API Key（写入凭据库，不写入设置文件），可填 Jina 抓取选择器（CSS），并显示当前搜索与抓取提供商。
+- 「设置 → 插件 → dsh-search-switch」页：顶部显示当前路由；凭据区按提供商填写 Tavily / Jina / Firecrawl 的 API Key（写入凭据库，不写入设置文件）；「高级设置」折叠区可调请求预算、Tavily / Jina / Firecrawl 行为、端点、Provider ID 与凭据变量名，并支持二次确认后恢复默认。
 - Jina 与 Firecrawl 都是本插件自己的私有实现（不注册进 `ctx.web`），不会与社区同名 provider 发生 `WEB_DUPLICATE_PROVIDER` 冲突。
 
 ## 安装
@@ -88,7 +88,17 @@ dsh plugin --profile desktop add dsh-search-switch
 
 ## 配置
 
-用户面向的字段都是 volatile，可在运行中通过设置页写入；`nativeProviderId` / `localFetchProviderId` 这类结构字段只能通过 profile 的 `cordis.patch.yml` 修改。
+用户可编辑的字段（含设置页「高级设置」里的端点、Provider ID 与凭据变量名）都是 volatile：保存后下一次 `web_search` / `web_fetch` 立即使用，不需要重启。
+
+### 设置页布局
+
+插件页（**设置 → 插件 → dsh-search-switch**）分三块：
+
+1. **当前路由**：搜索 / 抓取 / 全局三个只读标签，顶部直接看到当前组合。
+2. **API 凭据**：三家各占一行，显示凭据变量名与「已配置 / 未配置」；输入新 Key 后点保存，只写 DSH 凭据库。只读部署会在行内标注。
+3. **高级设置**（默认折叠）：请求预算、Tavily / Jina / Firecrawl 行为、端点与 Provider ID、凭据变量名。文本/数字在失焦或回车时校验并保存，下拉与开关即时保存；「恢复高级默认值」需要二次点击确认，且不会改凭据变量名。
+
+非法数字、URL、Provider ID 或变量名会就地报错，不会写入 profile。各字段与下面配置表一一对应。
 
 ### 搜索轴
 
@@ -130,10 +140,10 @@ dsh plugin --profile desktop add dsh-search-switch
 | `jinaLinksSummary` | `false` | 追加 `Buttons & Links` 汇总段 |
 | `jinaBypassCache` | `false` | `x-no-cache` |
 | `jinaRespondWith` | `default` | `default`（readability，省 token） / `markdown`（绕过 readability，保留完整标题结构）；抓取弹层的「Jina 内容模式」即为该项 |
-| `jinaTargetSelector` | 空 | `x-target-selector`，如 `article`、`main`、`#mw-content-text`；在设置页输入，配合 `markdown` 模式可裁掉导航 |
+| `jinaTargetSelector` | 空 | `x-target-selector`，如 `article`、`main`、`#mw-content-text`；在「高级设置 → Jina」输入，配合 `markdown` 模式可裁掉导航 |
 | `jinaSite` | 空 | 搜索站内过滤，逗号分隔多个 hostname |
 
-> **Wikipedia 这类长条目**：默认 readability 会把 `##` 小节标题剥掉（正文完整但结构变平）。要保留结构：抓取弹层把「Jina 内容模式」切到 `完整结构`，设置页填选择器（Wikipedia 用 `#mw-content-text`），并把 `fetchMaxChars` 提到 `200000`（12 万字符级的条目否则会被截断；该项仍是纯配置，写在 profile patch 里）。用 Firecrawl 抓取则天然带结构（`onlyMainContent`），不必调这些开关。
+> **Wikipedia 这类长条目**：默认 readability 会把 `##` 小节标题剥掉（正文完整但结构变平）。要保留结构：抓取弹层把「Jina 内容模式」切到 `完整结构`，在「高级设置 → Jina」填正文选择器（Wikipedia 用 `#mw-content-text`），并在「高级设置 → 请求预算」把抓取字符上限提到 `200000`（12 万字符级的条目否则会被截断）。用 Firecrawl 抓取则天然带结构（`onlyMainContent`），不必调这些开关。
 
 ### Firecrawl
 

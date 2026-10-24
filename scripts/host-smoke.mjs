@@ -207,10 +207,10 @@ function makeLegacyHost() {
   assert.equal(defaults.firecrawlTimeoutMs.get(), 20000)
   assert.equal(defaults.fetchMaxChars.get(), 100000)
   assert.equal(defaults.snippetMaxChars.get(), 800)
-  assert.equal(defaults.nativeProviderId, 'deepseek-official')
-  assert.equal(defaults.searchApiProviderId, 'deepseek-search-api')
-  assert.equal(defaults.localFetchProviderId, 'http')
-  assert.equal(defaults.fetchApiProviderId, 'deepseek-fetch-api')
+  assert.equal(defaults.nativeProviderId.get(), 'deepseek-official')
+  assert.equal(defaults.searchApiProviderId.get(), 'deepseek-search-api')
+  assert.equal(defaults.localFetchProviderId.get(), 'http')
+  assert.equal(defaults.fetchApiProviderId.get(), 'deepseek-fetch-api')
 
   const custom = Config({
     active: 'deepseek-api',
