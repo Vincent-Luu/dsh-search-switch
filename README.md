@@ -100,6 +100,16 @@ dsh plugin --profile desktop add dsh-search-switch
 
 非法数字、URL、Provider ID 或变量名会就地报错，不会写入 profile。各字段与下面配置表一一对应。
 
+### 凭据存储与安全
+
+插件自己不保存密钥，全部走 DSH 的 credentials seam；默认实现是 `dsh-credentials-local`：
+
+- **位置与优先级**：`~/.dsh/.credentials.yaml`（可用 `DSH_HOME` 或该 provider 的 `path` 改位置）。解析顺序为「存储文件 > 启动环境 > 项目 `.env` > `~/.dsh/.env`」。
+- **权限**：POSIX 上以 `0600` 创建文件、`0700` 创建目录，加载时若发现 group/other 可读会拒绝并在错误里提示 `chmod 600`。Windows 没有可检查的 mode，DSH 会跳过这项检查，依赖用户目录的 NTFS ACL（默认仅当前用户、SYSTEM、Administrators）。
+- **不加密**：文件内容是 YAML 明文。DSH 默认不提供 DPAPI / 系统钥匙串后端，也不会把密钥载入环境变量。
+- **与 Agent 的边界**：Agent 的工具进程以同一个 OS 用户运行，因此能读这个文件。DSH 官方文档明确说这是 “discretion, not a boundary”——文件权限无法把密钥与 Agent 隔离。需要真隔离时，应换成自定义 credentials provider（系统钥匙串 / 远程 vault），而不是依赖文件权限。
+- **运维建议**：不要把 `~/.dsh` 放进 OneDrive/备份；开启磁盘加密（BitLocker/FileVault）；设置页只显示「已配置 / 未配置」，不回显、也不打印密钥值。
+
 ### 搜索轴
 
 | 键 | 默认值 | 说明 |
