@@ -4,3 +4,6 @@ node_modules/
 .env.*
 .DS_Store
 Thumbs.db
+
+# Local benchmark artifacts: one-off scripts, raw HTML, JSON results
+bench/
