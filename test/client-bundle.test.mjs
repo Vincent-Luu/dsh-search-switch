@@ -6,7 +6,7 @@ import fs from 'node:fs/promises'
  * Load `lib/client.js` the way the browser module table does: publish it through
  * a fake `window.__ModuleLoader__`, then hand the factory a fake `require`.
  */
-async function loadBundle(reactOverride) {
+async function loadBundle(reactOverride, windowExtras) {
   const source = await fs.readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   let entry
   const window = {
@@ -15,6 +15,7 @@ async function loadBundle(reactOverride) {
         entry = candidate
       },
     },
+    ...(windowExtras ?? {}),
   }
   new Function('window', source)(window)
   assert.ok(entry, 'bundle did not call window.__ModuleLoader__.load')
@@ -441,8 +442,105 @@ test('flips the popover above when the composer sits at the bottom', async () =>
   assert.equal(sized.left, 900 - MENU_WIDTH)
 })
 
-/** A minimal stateful React stand-in: enough hooks to click through the menu. */
-function makeStatefulReact() {
+test('recognises the ancestors that turn a fixed popover into a contained one', async () => {
+  const { module } = await loadBundle()
+  const { createsFixedContainingBlock } = module.__internals
+  const cases = [
+    [{ willChange: 'transform' }, true],
+    [{ willChange: 'transform, opacity' }, true],
+    [{ willChange: 'opacity' }, false],
+    [{ willChange: 'auto' }, false],
+    [{ transform: 'matrix(1,0,0,1,0,0)' }, true],
+    [{ transform: 'none' }, false],
+    [{ containerType: 'inline-size' }, false],
+    [{ containerType: 'size' }, false],
+    [{ containerType: 'normal' }, false],
+    [{ contain: 'layout paint' }, true],
+    [{ contain: 'paint' }, true],
+    [{ contain: 'style' }, false],
+    [{ contentVisibility: 'auto' }, true],
+    [{ filter: 'blur(2px)' }, true],
+    [{ backdropFilter: 'blur(8px)' }, true],
+    [{ perspective: '800px' }, true],
+    [{ opacity: '0.5' }, false],
+    [undefined, false],
+    [null, false],
+  ]
+  for (const [style, expected] of cases) {
+    assert.equal(createsFixedContainingBlock(style), expected, JSON.stringify(style))
+  }
+})
+
+test('rebases the viewport placement onto the fixed containing block', async () => {
+  const plain = {
+    getBoundingClientRect: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+    __style: {},
+    parentElement: null,
+  }
+  // The 0.2.2 composer seat: will-change makes it the fixed ancestor. Its 2px
+  // top border must not be counted as padding box. A `container-type` row in
+  // between stays transparent (Chromium does not contain fixed boxes for it).
+  const seat = {
+    getBoundingClientRect: () => ({ top: 594, bottom: 722, left: 10, right: 1210 }),
+    __style: { willChange: 'transform', containerType: 'normal', borderTopWidth: '2px', borderLeftWidth: '0px' },
+    parentElement: plain,
+  }
+  const row = {
+    getBoundingClientRect: () => ({ top: 650, bottom: 692, left: 40, right: 1200 }),
+    __style: { containerType: 'inline-size', willChange: 'auto', borderTopWidth: '0px', borderLeftWidth: '0px' },
+    parentElement: seat,
+  }
+  const trigger = {
+    getBoundingClientRect: () => ({ top: 694, bottom: 722, left: 40, right: 170 }),
+    __style: {},
+    parentElement: row,
+  }
+  const point = { top: 668, left: 40, width: 260, above: false }
+
+  const { module } = await loadBundle(undefined, {
+    innerWidth: 1200,
+    innerHeight: 800,
+    getComputedStyle: (element) => element.__style || {},
+  })
+  const { toFixedCoordinates } = module.__internals
+  const rebased = toFixedCoordinates(trigger, point)
+  assert.equal(rebased.top, 668 - (594 + 2))
+  assert.equal(rebased.left, 40 - (10 + 0))
+  assert.equal(rebased.width, 260)
+  assert.equal(rebased.above, false)
+
+  // A plain chain keeps the viewport coordinates byte-for-byte.
+  const loose = { ...trigger, parentElement: plain }
+  assert.equal(toFixedCoordinates(loose, point).top, 668)
+  assert.equal(toFixedCoordinates(loose, point).left, 40)
+
+  // No anchor (a tip whose dot is gone) falls back to the viewport.
+  assert.equal(toFixedCoordinates(null, point).top, 668)
+
+  // A host without getComputedStyle cannot be interrogated: stay untouched.
+  const bare = await loadBundle()
+  assert.equal(bare.module.__internals.toFixedCoordinates(trigger, point).top, 668)
+})
+
+test('focusing a popover row never scrolls the transcript', async () => {
+  const { module } = await loadBundle()
+  const { focusWithoutScroll } = module.__internals
+  const calls = []
+  focusWithoutScroll({ focus: (...args) => calls.push(args) })
+  assert.deepEqual(calls, [[{ preventScroll: true }]])
+
+  // Older hosts ignore the options bag: the plain call still lands.
+  const fallback = []
+  focusWithoutScroll({
+    focus(options) {
+      if (options) throw new Error('options unsupported')
+      fallback.push('plain')
+    },
+  })
+  assert.deepEqual(fallback, ['plain'])
+})
+
+/** A minimal stateful React stand-in: enough hooks to click through the menu. */function makeStatefulReact() {
   const hooks = []
   let index = 0
   let rerender = () => {}
